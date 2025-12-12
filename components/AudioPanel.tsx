@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Music, Upload, Play, Check, Pause, Loader2, Download, RefreshCw, Sparkles } from 'lucide-react';
-import { generateSpeech } from '../services/geminiService';
+import { Music, Upload, Play, Check, Pause, Loader2, Download, RefreshCw, Sparkles, AlertCircle, Wand2 } from 'lucide-react';
+import { generateAiTrack } from '../services/geminiService';
 
 interface AudioPanelProps {
   onSelectAudio: (url: string) => void;
@@ -17,24 +17,16 @@ interface Track {
   isAi?: boolean;
 }
 
-const TRACK_POOLS: Record<string, Track[]> = {
+// Minimal fallback tracks (Classics)
+const CLASSIC_TRACKS: Record<string, Track[]> = {
   Default: [
-    { name: "Forest Lullaby", url: "https://cdn.pixabay.com/audio/2022/02/22/audio_d1718ab41b.mp3", desc: "Acoustic, Nature, Calm" },
-    { name: "The Cradle of Your Soul", url: "https://cdn.pixabay.com/audio/2022/03/10/audio_502937d571.mp3", desc: "Relaxing, Emotional, Piano" },
-    { name: "Once In Paris", url: "https://cdn.pixabay.com/audio/2022/10/25/audio_97f4b82d96.mp3", desc: "Jazz, Soft, Evening" },
-    { name: "Lofi Study", url: "https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3", desc: "Beats, Chill, Modern" }
+    { name: "A New Beginning", url: "https://freepd.com/music/A%20New%20Beginning.mp3", desc: "Classic: Hopeful Pop" },
   ],
   Cinematic: [
-    { name: "Cinematic Atmosphere", url: "https://cdn.pixabay.com/audio/2022/03/15/audio_c8c8a73467.mp3", desc: "Epic, Wide, Soundscape" },
-    { name: "Ambient Piano", url: "https://cdn.pixabay.com/audio/2021/09/06/audio_9c0f9e102f.mp3", desc: "Emotional, Soft, Touching" },
-    { name: "Documentary", url: "https://cdn.pixabay.com/audio/2023/01/01/audio_816821e227.mp3", desc: "Serious, Building, Story" },
-    { name: "Epic Heart", url: "https://cdn.pixabay.com/audio/2021/08/09/audio_03d6e32637.mp3", desc: "Trailer, Powerful, String" }
+    { name: "Epic Unease", url: "https://freepd.com/music/Epic%20Unease.mp3", desc: "Classic: Tension" },
   ],
   Upbeat: [
-    { name: "Good Vibes", url: "https://cdn.pixabay.com/audio/2022/04/27/audio_67bcf729cb.mp3", desc: "Happy, Summer, Party" },
-    { name: "The Podcast Intro", url: "https://cdn.pixabay.com/audio/2022/01/18/audio_d0a13f69d2.mp3", desc: "Groovy, Fun, Short" },
-    { name: "Motivation", url: "https://cdn.pixabay.com/audio/2022/05/16/audio_db6591201e.mp3", desc: "Corporate, Success, Bright" },
-    { name: "Tropical Sun", url: "https://cdn.pixabay.com/audio/2022/09/02/audio_72596b6b78.mp3", desc: "Dance, Beach, Energetic" }
+    { name: "Happy Alley", url: "https://freepd.com/music/Happy%20Alley.mp3", desc: "Classic: Cartoon" },
   ]
 };
 
@@ -49,10 +41,12 @@ const AudioPanel: React.FC<AudioPanelProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState('Default');
-  const [generatedTracks, setGeneratedTracks] = useState<Track[]>([]);
+  const [tracks, setTracks] = useState<Track[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [downloadingUrl, setDownloadingUrl] = useState<string | null>(null);
   const [playingPreview, setPlayingPreview] = useState<string | null>(null);
+  const [errorTracks, setErrorTracks] = useState<Set<string>>(new Set());
+  
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const mountedRef = useRef(true);
 
@@ -67,52 +61,49 @@ const AudioPanel: React.FC<AudioPanelProps> = ({
     };
   }, []);
 
-  const loadTracks = async (regenerateAI = false) => {
-      setIsGenerating(true);
-      setPlayingPreview(null);
-      if (previewAudioRef.current) {
-        previewAudioRef.current.pause();
-      }
-
-      // 1. Get Curated tracks for this category (random selection)
-      const pool = TRACK_POOLS[activeTab] || TRACK_POOLS['Default'];
-      // Deterministic shuffle for stability unless regenerating
-      const curated = [...pool].sort(() => 0.5 - Math.random()).slice(0, 3);
-
-      // 2. Generate AI Voiceover Track (Real Generation)
-      if (regenerateAI) {
-        try {
-          let prompt = "";
-          if (activeTab === 'Cinematic') prompt = "Say in a deep, epic voice: Prepare to witness a journey through time and memory.";
-          else if (activeTab === 'Upbeat') prompt = "Say cheerfully and energetically: Let's celebrate these amazing moments! Here we go!";
-          else prompt = "Say calmly and warmly: Welcome to this collection of cherished memories.";
-
-          // Call the actual Gemini service
-          const aiUrl = await generateSpeech(prompt);
-          
-          if (aiUrl && mountedRef.current) {
-              curated.unshift({
-                  name: `AI Intro (${activeTab})`,
-                  url: aiUrl,
-                  desc: "Generated Voiceover",
-                  isAi: true
-              });
-          }
-        } catch (e) {
-            console.error("AI Generation failed", e);
-        }
-      }
-
-      if (mountedRef.current) {
-        setGeneratedTracks(curated);
-        setIsGenerating(false);
-      }
+  const loadTracks = (category: string) => {
+    // Start with Classics
+    const classics = CLASSIC_TRACKS[category] || CLASSIC_TRACKS['Default'];
+    setTracks(classics);
   };
 
-  // Initial load when tab changes (don't auto-generate AI to save quota, user must click regenerate)
+  // Initial load when tab changes
   useEffect(() => {
-    loadTracks(false);
+    loadTracks(activeTab);
   }, [activeTab]);
+
+  const handleComposeAiTrack = async () => {
+    setIsGenerating(true);
+    // Stop any preview
+    if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+        setPlayingPreview(null);
+    }
+
+    try {
+        const result = await generateAiTrack(activeTab);
+        if (result && mountedRef.current) {
+            const newTrack: Track = {
+                name: result.name,
+                url: result.url,
+                desc: `AI Generated ${activeTab} Track`,
+                isAi: true
+            };
+            // Add to top of list
+            setTracks(prev => [newTrack, ...prev]);
+        }
+    } catch (e) {
+        console.error("Failed to compose track", e);
+    } finally {
+        if (mountedRef.current) setIsGenerating(false);
+    }
+  };
+
+  const handleTrackError = (failedTrackUrl: string) => {
+    console.warn(`Track failed to load: ${failedTrackUrl}`);
+    setErrorTracks(prev => new Set(prev).add(failedTrackUrl));
+    setPlayingPreview(null);
+  };
 
   const togglePreview = (url: string) => {
     if (!url) return; 
@@ -121,23 +112,23 @@ const AudioPanel: React.FC<AudioPanelProps> = ({
       previewAudioRef.current?.pause();
       setPlayingPreview(null);
     } else {
-      // Robust audio switching logic
       if (!previewAudioRef.current) {
         previewAudioRef.current = new Audio();
       }
       
+      previewAudioRef.current.onerror = () => handleTrackError(url);
       previewAudioRef.current.pause();
       previewAudioRef.current.src = url;
       
-      // Attempt to play with error handling
       const playPromise = previewAudioRef.current.play();
       if (playPromise !== undefined) {
         playPromise.catch(error => {
-          console.warn("Playback prevented:", error);
-          // If error is "NotSupportedError", it might be a bad Blob or codec
+          if (error.name !== 'AbortError' && error.name !== 'NotAllowedError') {
+             console.warn("Playback failed:", error);
+             handleTrackError(url);
+          }
         });
       }
-      
       setPlayingPreview(url);
     }
   };
@@ -146,17 +137,16 @@ const AudioPanel: React.FC<AudioPanelProps> = ({
     setDownloadingUrl(track.url);
     try {
       if (track.url.startsWith('blob:')) {
-          // It's already a local blob (AI generated)
           onSelectAudio(track.url);
       } else {
-          // Fetch remote file to cache it as local blob
           const response = await fetch(track.url);
+          if (!response.ok) throw new Error("Network response was not ok");
           const blob = await response.blob();
           const localUrl = URL.createObjectURL(blob);
           onSelectAudio(localUrl);
       }
     } catch (e) {
-      console.error("Download failed, falling back to remote URL", e);
+      console.warn("Download failed, falling back to streaming", e);
       onSelectAudio(track.url);
     } finally {
       setDownloadingUrl(null);
@@ -181,7 +171,10 @@ const AudioPanel: React.FC<AudioPanelProps> = ({
             <h2 className="text-2xl font-serif text-white flex items-center gap-2">
               <Music className="text-indigo-400" /> Soundtrack
             </h2>
-            <p className="text-slate-400 text-sm mt-1">Select background music or generate an AI intro.</p>
+            <div className="flex flex-col gap-0.5 mt-1">
+              <p className="text-slate-400 text-sm">Select background music or generate an AI soundscape.</p>
+              <p className="text-[10px] text-slate-500">Powered by Google GenAI Music Node (TTS)</p>
+            </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white px-3 py-1 rounded hover:bg-slate-800 transition-colors">
             Done
@@ -209,27 +202,38 @@ const AudioPanel: React.FC<AudioPanelProps> = ({
         {/* Main Content */}
         <div className="flex-1 overflow-y-auto p-6 bg-slate-950">
           
-          {isGenerating ? (
-            <div className="h-48 flex flex-col items-center justify-center text-slate-500 space-y-4">
-              <Loader2 size={32} className="animate-spin text-indigo-500" />
-              <p className="text-sm animate-pulse">Consulting the AI Director...</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
+          {/* AI Generator Button */}
+          <button
+            onClick={handleComposeAiTrack}
+            disabled={isGenerating}
+            className="w-full mb-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 rounded-xl flex flex-col items-center justify-center text-white shadow-lg shadow-indigo-500/20 transition-all transform hover:scale-[1.01] active:scale-[0.99] disabled:opacity-70 disabled:cursor-not-allowed group"
+          >
+             {isGenerating ? (
+               <>
+                 <Loader2 size={24} className="animate-spin mb-2" />
+                 <span className="font-medium animate-pulse">Composing {activeTab} Track...</span>
+               </>
+             ) : (
+               <>
+                 <div className="flex items-center gap-2 mb-1">
+                   <Wand2 size={24} className="group-hover:rotate-12 transition-transform" />
+                   <span className="text-lg font-serif">Compose New {activeTab} Track</span>
+                 </div>
+                 <span className="text-xs text-indigo-200">Generate a unique AI song for your mood</span>
+               </>
+             )}
+          </button>
+
+          <div className="space-y-3">
                <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tracks</span>
-                  <button 
-                    onClick={() => loadTracks(true)}
-                    className="text-xs flex items-center gap-1 text-indigo-400 hover:text-indigo-300 transition-colors bg-indigo-500/10 px-2 py-1 rounded-full border border-indigo-500/20"
-                  >
-                    <Sparkles size={12} /> Generate AI Intro
-                  </button>
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Available Tracks</span>
                </div>
                
-               {generatedTracks.map((track) => {
+               {tracks.map((track) => {
                  const isSelected = currentAudio === track.url || (currentAudio && currentAudio.startsWith('blob:') && downloadingUrl === track.url);
                  const isDownloading = downloadingUrl === track.url;
                  const isAi = track.isAi;
+                 const isError = errorTracks.has(track.url);
 
                  return (
                    <div 
@@ -238,11 +242,12 @@ const AudioPanel: React.FC<AudioPanelProps> = ({
                       isSelected 
                         ? 'bg-indigo-500/10 border-indigo-500/50' 
                         : isAi ? 'bg-indigo-900/10 border-indigo-500/30' : 'bg-slate-900 border-slate-800 hover:border-slate-600'
-                    }`}
+                    } ${isError ? 'opacity-50 pointer-events-none grayscale' : ''}`}
                    >
                      <div className="flex items-center gap-4">
                         <button 
                           onClick={() => togglePreview(track.url)}
+                          disabled={isError}
                           className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
                             playingPreview === track.url ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'
                           }`}
@@ -253,9 +258,11 @@ const AudioPanel: React.FC<AudioPanelProps> = ({
                         <div>
                           <h4 className={`font-medium flex items-center gap-2 ${isSelected ? 'text-indigo-300' : 'text-slate-200'}`}>
                               {track.name}
-                              {isAi && <Sparkles size={12} className="text-amber-400" />}
+                              {isAi && <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/30 flex items-center gap-1"><Sparkles size={8} /> AI Generated</span>}
                           </h4>
-                          <p className="text-xs text-slate-500">{track.desc}</p>
+                          <p className="text-xs text-slate-500">
+                             {isError ? <span className="text-red-400 flex items-center gap-1"><AlertCircle size={10} /> Unavailable</span> : track.desc}
+                          </p>
                         </div>
                      </div>
 
@@ -272,7 +279,8 @@ const AudioPanel: React.FC<AudioPanelProps> = ({
                      ) : (
                         <button 
                           onClick={() => handleSelectTrack(track)}
-                          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors border border-slate-700"
+                          disabled={isError}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors border border-slate-700 disabled:opacity-50"
                         >
                           <Download size={16} />
                           <span className="text-sm">Select</span>
@@ -282,7 +290,6 @@ const AudioPanel: React.FC<AudioPanelProps> = ({
                  );
                })}
             </div>
-          )}
 
           {/* Local Upload Fallback */}
           <div className="mt-8 pt-6 border-t border-slate-800">

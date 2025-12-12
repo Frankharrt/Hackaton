@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
 import { Photo } from "../types";
 
 const API_KEY = process.env.API_KEY || '';
@@ -393,11 +393,9 @@ export const generateSpeech = async (text: string): Promise<string | null> => {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: {
-        parts: [{ text }]
-      },
+      contents: [{ parts: [{ text }] }],
       config: {
-        responseModalities: ["AUDIO"],
+        responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
             prebuiltVoiceConfig: { voiceName: 'Kore' }
@@ -423,6 +421,76 @@ export const generateSpeech = async (text: string): Promise<string | null> => {
     return null;
   } catch (error) {
     handleGeminiError(error, 'speech generation');
+    return null;
+  }
+};
+
+/**
+ * Generates a "song" or musical track using TTS with specific prompting/voices.
+ * This simulates music generation using the available speech model.
+ */
+export const generateAiTrack = async (category: string): Promise<{ url: string; name: string } | null> => {
+  if (!API_KEY) return null;
+
+  let prompt = "";
+  let voiceName = "Kore";
+  let trackName = "";
+
+  // Simplified prompts to ensure API stability and avoid 500 errors
+  switch (category) {
+    case 'Cinematic':
+      prompt = "Hum a slow, deep, and dramatic melody.";
+      voiceName = "Fenrir";
+      trackName = "Epic Echoes (AI)";
+      break;
+    case 'Upbeat':
+      prompt = "Beatbox a simple, fast, and energetic rhythm.";
+      voiceName = "Puck";
+      trackName = "Rhythm Burst (AI)";
+      break;
+    case 'Default':
+    default:
+      prompt = "Hum a soft and soothing lullaby.";
+      voiceName = "Kore";
+      trackName = "Gentle Breeze (AI)";
+      break;
+  }
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [
+        {
+          parts: [{ text: prompt }]
+        }
+      ],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: voiceName }
+          }
+        }
+      }
+    });
+
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (base64Audio) {
+      const binaryString = atob(base64Audio);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const wavBlob = pcmToWav(bytes);
+      return {
+        url: URL.createObjectURL(wavBlob),
+        name: trackName
+      };
+    }
+    return null;
+  } catch (error) {
+    handleGeminiError(error, 'music generation');
     return null;
   }
 };

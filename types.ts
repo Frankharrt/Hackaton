@@ -49,5 +49,5 @@ export const DEFAULT_FILTERS: ImageFilter = {
   grayscale: 0,
 };
 
-// Replaced with a reliable public domain URL (Forest Lullaby - Acoustic/Folk from Pixabay)
-export const DEMO_AUDIO_URL = "https://cdn.pixabay.com/audio/2022/02/22/audio_d1718ab41b.mp3";
+// Replaced with a reliable YouTube Audio Library track (Kevin MacLeod - A New Beginning)
+export const DEMO_AUDIO_URL = "https://freepd.com/music/A%20New%20Beginning.mp3";
