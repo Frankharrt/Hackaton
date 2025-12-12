@@ -1,0 +1,7 @@
+{
+  "name": "CineMemories",
+  "description": "A cinematic digital photo album with AI-powered organization, narration, and editing features.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
