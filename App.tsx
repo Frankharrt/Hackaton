@@ -8,20 +8,62 @@ import { suggestCategory } from './services/geminiService';
 import { Layout, Images, PlayCircle, Music, Settings, User } from 'lucide-react';
 
 const App: React.FC = () => {
-  const [state, setState] = useState<AppState>({
-    photos: [],
-    currentView: 'gallery',
-    editingPhotoId: null,
-    selectedAudio: DEMO_AUDIO_URL,
-    isAudioPlaying: false,
-    audioVolume: 50,
+  const [state, setState] = useState<AppState>(() => {
+    try {
+      const saved = localStorage.getItem('cineMemories_state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return { 
+          ...parsed, 
+          currentView: 'gallery', 
+          editingPhotoId: null, 
+          isAudioPlaying: false 
+        };
+      }
+    } catch (e) {
+      console.warn("Failed to load state", e);
+    }
+    return {
+      photos: [],
+      currentView: 'gallery',
+      editingPhotoId: null,
+      selectedAudio: DEMO_AUDIO_URL,
+      isAudioPlaying: false,
+      audioVolume: 50,
+    };
   });
   
   const [showAudioPanel, setShowAudioPanel] = useState(false);
-  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [customCategories, setCustomCategories] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('cineMemories_categories');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) { return []; }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('cineMemories_state', JSON.stringify(state));
+    } catch (e) {
+      console.warn("State save failed (likely quota exceeded)", e);
+    }
+  }, [state]);
+
+  useEffect(() => {
+    localStorage.setItem('cineMemories_categories', JSON.stringify(customCategories));
+  }, [customCategories]);
 
   // Helpers
   const generateId = () => Math.random().toString(36).substr(2, 9);
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -29,25 +71,27 @@ const App: React.FC = () => {
       const files = Array.from(e.target.files) as File[];
 
       for (const file of files) {
-        const url = URL.createObjectURL(file);
-        // Initial simplified object
-        const photo: Photo = {
-          id: generateId(),
-          url,
-          originalUrl: url,
-          name: file.name,
-          category: ImageCategory.UNCATEGORIZED,
-          narration: '',
-          filters: { ...DEFAULT_FILTERS },
-          rotation: 0
-        };
-        newPhotos.push(photo);
+        try {
+          const url = await fileToBase64(file);
+          const photo: Photo = {
+            id: generateId(),
+            url,
+            originalUrl: url,
+            name: file.name,
+            category: ImageCategory.UNCATEGORIZED,
+            narration: '',
+            filters: { ...DEFAULT_FILTERS },
+            rotation: 0
+          };
+          newPhotos.push(photo);
+        } catch (err) {
+          console.error("Error reading file", err);
+        }
       }
 
       setState(prev => ({ ...prev, photos: [...prev.photos, ...newPhotos] }));
 
       // Process Categories in background with Gemini
-      // Use sequential processing queue to respect API rate limits
       const processCategoriesQueue = async () => {
         for (const p of newPhotos) {
           try {
@@ -58,7 +102,6 @@ const App: React.FC = () => {
                 existing.id === p.id ? { ...existing, category: cat } : existing
               )
             }));
-            // Add a 1s delay between requests to avoid 429 errors
             await new Promise(resolve => setTimeout(resolve, 1000));
           } catch (err) {
             console.warn(`Categorization skipped for ${p.name}`);
@@ -68,6 +111,28 @@ const App: React.FC = () => {
 
       processCategoriesQueue();
     }
+  };
+
+  const handleReorder = (fromId: string, toId: string) => {
+    setState(prev => {
+      const photos = [...prev.photos];
+      const fromIndex = photos.findIndex(p => p.id === fromId);
+      const toIndex = photos.findIndex(p => p.id === toId);
+      
+      if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return prev;
+      
+      const [movedItem] = photos.splice(fromIndex, 1);
+      // Recalculate insertion index because removal might affect it
+      const newToIndex = photos.findIndex(p => p.id === toId);
+      // If we are moving down the list, we insert after the target. 
+      // If we are moving up, we insert before.
+      // However, simplified splice insertion at the target's current index works well for direct swaps or inserts.
+      // But standard drag behavior usually implies inserting 'at' the location, pushing others down.
+      // Let's just insert at newToIndex.
+      photos.splice(newToIndex, 0, movedItem);
+      
+      return { ...prev, photos };
+    });
   };
 
   const handleAddDemo = () => {
@@ -170,6 +235,7 @@ const App: React.FC = () => {
             onUpload={handleUpload}
             onDelete={deletePhoto}
             onEdit={(id) => setState(p => ({ ...p, currentView: 'editor', editingPhotoId: id }))}
+            onReorder={handleReorder}
             onAddDemo={handleAddDemo}
             onUpdateCategory={(id, cat) => {
               setState(p => ({

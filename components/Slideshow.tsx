@@ -45,10 +45,9 @@ const Slideshow: React.FC<SlideshowProps> = ({ photos, onClose, audioUrl, volume
       if (audioRef.current) {
         audioRef.current.volume = volume / 100;
         
-        // Changed: Music plays if not muted, ignoring isPlaying state (slideshow pause)
+        // Music plays if not muted, ignoring isPlaying state (slideshow pause) to keep ambiance
         if (!isAudioMuted) {
           try {
-            // Ensure the element is ready
             await audioRef.current.play();
           } catch (e) {
             console.warn("Autoplay prevented or interrupted:", e);
@@ -59,7 +58,7 @@ const Slideshow: React.FC<SlideshowProps> = ({ photos, onClose, audioUrl, volume
       }
     };
     playAudio();
-  }, [isPlaying, isAudioMuted, volume, audioUrl]); // Re-run when audioUrl changes
+  }, [isAudioMuted, volume, audioUrl]); // Removed isPlaying to keep music going when paused
 
   // Voice Sync (Narration)
   useEffect(() => {
@@ -167,7 +166,11 @@ const Slideshow: React.FC<SlideshowProps> = ({ photos, onClose, audioUrl, volume
               <React.Fragment key={`${photo.id}-${i}`}>
                 <div 
                   onClick={() => setCurrentIndex(originalIndex)}
-                  className={`relative cursor-pointer transition-all duration-300 hover:z-10 bg-[#050505] p-1 ${isActive ? 'ring-2 ring-inset ring-amber-500 opacity-100 z-10' : 'opacity-60 hover:opacity-100'}`}
+                  className={`relative cursor-pointer transition-all duration-300 hover:z-10 bg-[#050505] p-1 ${
+                    isActive 
+                      ? 'ring-2 ring-inset ring-slate-200 shadow-[0_0_12px_rgba(255,255,255,0.6)] opacity-100 z-10' 
+                      : 'opacity-60 hover:opacity-100'
+                  }`}
                 >
                   <img 
                     src={photo.url} 
@@ -192,6 +195,7 @@ const Slideshow: React.FC<SlideshowProps> = ({ photos, onClose, audioUrl, volume
         This forces React to destroy and recreate the Audio element whenever the URL changes.
         This prevents the "No supported source was found" error that occurs when swapping 
         between Remote URLs and Blob URLs on the same recycled audio element.
+        Added autoPlay to ensure music starts.
       */}
       {audioUrl && (
         <audio 
@@ -199,6 +203,8 @@ const Slideshow: React.FC<SlideshowProps> = ({ photos, onClose, audioUrl, volume
           src={audioUrl} 
           key={audioUrl} 
           loop 
+          autoPlay
+          style={{ display: 'none' }} 
         />
       )}
       
@@ -253,22 +259,22 @@ const Slideshow: React.FC<SlideshowProps> = ({ photos, onClose, audioUrl, volume
       {/* RIGHT PANEL: Cinematic Slide */}
       <div className="flex-1 relative bg-black flex flex-col h-full overflow-hidden group/slide">
         
-        {/* Background Blur */}
+        {/* Background Blur - Brighter to fill dark space */}
         <div 
-          className="absolute inset-0 bg-cover bg-center transition-all duration-1000 blur-3xl opacity-30 z-0 scale-110"
+          className="absolute inset-0 bg-cover bg-center transition-all duration-1000 blur-3xl opacity-70 z-0 scale-110"
           style={{ backgroundImage: `url(${currentPhoto.url})` }} 
         />
 
-        {/* Cinematic Vignette */}
-        <div className="absolute inset-0 bg-radial-gradient from-transparent via-black/20 to-black/80 z-0 pointer-events-none" />
+        {/* Cinematic Vignette - Reduced opacity to let background show */}
+        <div className="absolute inset-0 bg-radial-gradient from-transparent via-black/10 to-black/70 z-0 pointer-events-none" />
 
         {/* Main Content Container */}
         <div className="relative w-full h-full flex flex-col z-10">
           
           {/* Image Display Area - Maximized & Animated */}
           <div className="flex-1 min-h-0 flex items-center justify-center p-0 overflow-hidden relative">
-             {/* Slide Background Container */}
-             <div className="relative w-full h-full flex items-center justify-center bg-[#020202]/60 backdrop-blur-sm shadow-[inset_0_0_50px_rgba(0,0,0,0.5)]">
+             {/* Slide Background Container - Lighter overlay */}
+             <div className="relative w-full h-full flex items-center justify-center bg-black/10 backdrop-blur-[1px] shadow-[inset_0_0_50px_rgba(0,0,0,0.3)]">
                <img 
                  key={currentPhoto.id}
                  src={currentPhoto.url} 

@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Photo, ImageCategory } from '../types';
-import { Trash2, Edit, Plus, FolderPlus, X } from 'lucide-react';
+import { Trash2, Edit, Plus, FolderPlus, X, GripHorizontal } from 'lucide-react';
 
 interface GalleryProps {
   photos: Photo[];
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
+  onReorder: (fromId: string, toId: string) => void;
   onAddDemo: () => void;
   onUpdateCategory: (id: string, newCategory: string) => void;
   customCategories: string[];
@@ -19,6 +20,7 @@ const Gallery: React.FC<GalleryProps> = ({
   onUpload, 
   onDelete, 
   onEdit, 
+  onReorder,
   onAddDemo, 
   onUpdateCategory,
   customCategories,
@@ -26,8 +28,9 @@ const Gallery: React.FC<GalleryProps> = ({
   onDeleteCustomCategory
 }) => {
   const [activeCategory, setActiveCategory] = useState<string>('All');
-  const [isDragging, setIsDragging] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [newCatName, setNewCatName] = useState('');
+  const [draggedPhotoId, setDraggedPhotoId] = useState<string | null>(null);
 
   // Stable reference for built-in categories
   const builtInCategories = useMemo(() => ['All', ...Object.values(ImageCategory)], []);
@@ -49,21 +52,26 @@ const Gallery: React.FC<GalleryProps> = ({
     return photos.filter(p => p.category === activeCategory);
   }, [photos, activeCategory]);
 
-  const handleDragOver = (e: React.DragEvent) => {
+  // Container Drop Handlers (File Upload)
+  const handleContainerDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDragging(true);
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDraggingFile(true);
+    }
   };
 
-  const handleDragLeave = () => {
-    setIsDragging(false);
+  const handleContainerDragLeave = (e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDraggingFile(false);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleContainerDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDragging(false);
+    setIsDraggingFile(false);
     
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
+    // Only handle files here
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const files = e.dataTransfer.files;
       const dataTransfer = new DataTransfer();
       Array.from(files).forEach((file) => dataTransfer.items.add(file as File));
       
@@ -77,6 +85,31 @@ const Gallery: React.FC<GalleryProps> = ({
       
       onUpload(syntheticEvent);
     }
+  };
+
+  // Card Drag Handlers (Reordering)
+  const handleCardDragStart = (e: React.DragEvent, id: string) => {
+    e.stopPropagation();
+    setDraggedPhotoId(id);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", id);
+    // Optional: Set ghost image
+  };
+
+  const handleCardDragOver = (e: React.DragEvent) => {
+    e.preventDefault(); // Necessary to allow dropping
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleCardDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    e.stopPropagation(); // Stop container from seeing this as a drop
+    
+    const fromId = e.dataTransfer.getData("text/plain");
+    if (fromId && fromId !== targetId) {
+      onReorder(fromId, targetId);
+    }
+    setDraggedPhotoId(null);
   };
 
   const handleCreateCategory = () => {
@@ -100,10 +133,10 @@ const Gallery: React.FC<GalleryProps> = ({
 
   return (
     <div 
-      className={`min-h-[80vh] p-6 transition-colors duration-300 ${isDragging ? 'bg-slate-800' : ''}`}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      className={`min-h-[80vh] p-6 transition-colors duration-300 ${isDraggingFile ? 'bg-slate-800 ring-2 ring-indigo-500 ring-inset' : ''}`}
+      onDragOver={handleContainerDragOver}
+      onDragLeave={handleContainerDragLeave}
+      onDrop={handleContainerDrop}
     >
       {/* Category Bar */}
       <div className="flex flex-wrap items-center gap-2 mb-8 overflow-x-auto pb-4 scrollbar-hide">
@@ -186,7 +219,11 @@ const Gallery: React.FC<GalleryProps> = ({
           {filteredPhotos.map((photo) => (
             <div 
               key={photo.id} 
-              className="group relative bg-slate-800 rounded-xl overflow-hidden shadow-xl aspect-square cursor-pointer transition-transform hover:-translate-y-1"
+              draggable={true}
+              onDragStart={(e) => handleCardDragStart(e, photo.id)}
+              onDragOver={handleCardDragOver}
+              onDrop={(e) => handleCardDrop(e, photo.id)}
+              className={`group relative bg-slate-800 rounded-xl overflow-hidden shadow-xl aspect-square cursor-grab active:cursor-grabbing transition-transform hover:-translate-y-1 ${draggedPhotoId === photo.id ? 'opacity-50' : 'opacity-100'}`}
               onClick={() => onEdit(photo.id)}
             >
               <img 
@@ -205,6 +242,12 @@ const Gallery: React.FC<GalleryProps> = ({
                   transform: `rotate(${photo.rotation}deg)`
                 }}
               />
+              
+              {/* Grip Handle hint */}
+              <div className="absolute top-2 right-2 p-1 bg-black/40 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                 <GripHorizontal size={14} className="text-white/70" />
+              </div>
+
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-4">
                 <p className="text-white font-medium truncate mb-1">{photo.name}</p>
                 <div className="flex justify-between items-center">

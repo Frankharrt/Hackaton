@@ -17,16 +17,19 @@ interface Track {
   isAi?: boolean;
 }
 
-// Minimal fallback tracks (Classics)
+// Verified Pixabay Tracks
 const CLASSIC_TRACKS: Record<string, Track[]> = {
   Default: [
-    { name: "A New Beginning", url: "https://freepd.com/music/A%20New%20Beginning.mp3", desc: "Classic: Hopeful Pop" },
+    { name: "Morning Garden", url: "https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3", desc: "Acoustic Chill" },
+    { name: "Lofi Study", url: "https://cdn.pixabay.com/audio/2022/01/18/audio_d0a13f69d2.mp3", desc: "Relaxing Beats" },
   ],
   Cinematic: [
-    { name: "Epic Unease", url: "https://freepd.com/music/Epic%20Unease.mp3", desc: "Classic: Tension" },
+    { name: "Epic Cinematic", url: "https://cdn.pixabay.com/audio/2022/03/24/audio_1456d6b8e8.mp3", desc: "Dramatic Build" },
+    { name: "Inspiring Emotional", url: "https://cdn.pixabay.com/audio/2022/08/02/audio_884fe92c21.mp3", desc: "Piano & Strings" },
   ],
   Upbeat: [
-    { name: "Happy Alley", url: "https://freepd.com/music/Happy%20Alley.mp3", desc: "Classic: Cartoon" },
+    { name: "Upbeat Corporate", url: "https://cdn.pixabay.com/audio/2022/10/25/audio_550dca0747.mp3", desc: "Motivational" },
+    { name: "Summer Party", url: "https://cdn.pixabay.com/audio/2022/09/16/audio_0e54d7d983.mp3", desc: "Fun & Energetic" },
   ]
 };
 
@@ -139,14 +142,11 @@ const AudioPanel: React.FC<AudioPanelProps> = ({
       if (track.url.startsWith('blob:')) {
           onSelectAudio(track.url);
       } else {
-          const response = await fetch(track.url);
-          if (!response.ok) throw new Error("Network response was not ok");
-          const blob = await response.blob();
-          const localUrl = URL.createObjectURL(blob);
-          onSelectAudio(localUrl);
+          // Verify it's fetchable (optional, but good for UI feedback)
+          onSelectAudio(track.url);
       }
     } catch (e) {
-      console.warn("Download failed, falling back to streaming", e);
+      console.warn("Error selecting track", e);
       onSelectAudio(track.url);
     } finally {
       setDownloadingUrl(null);

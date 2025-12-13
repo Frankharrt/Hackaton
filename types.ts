@@ -1,3 +1,4 @@
+
 export interface ImageFilter {
   brightness: number;
   contrast: number;
@@ -49,5 +50,5 @@ export const DEFAULT_FILTERS: ImageFilter = {
   grayscale: 0,
 };
 
-// Replaced with a reliable YouTube Audio Library track (Kevin MacLeod - A New Beginning)
-export const DEMO_AUDIO_URL = "https://freepd.com/music/A%20New%20Beginning.mp3";
+// Reliable Pixabay Track: Morning Garden - Acoustic Chill
+export const DEMO_AUDIO_URL = "https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3";
